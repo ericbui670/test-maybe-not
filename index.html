@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus OS | Personal Terminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #10b981; }
+        body { font-family: 'Space Grotesk', sans-serif; background: #0f172a; color: white; transition: all 0.5s ease; overflow: hidden; height: 100vh; }
+        
+        /* Themes */
+        .theme-base { background: radial-gradient(circle at top left, #1e293b, #0f172a); }
+        .theme-science { background: linear-gradient(135deg, #064e3b 0%, #020617 100%); border-top: 5px solid #34d399; }
+        .theme-car { background: linear-gradient(135deg, #450a0a 0%, #000000 100%); border-top: 5px solid #ef4444; }
+        .theme-aviation { background: linear-gradient(180deg, #0c4a6e 0%, #082f49 100%); border-top: 5px solid #38bdf8; }
+
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+        
+        /* Task Sidebar Trigger */
+        #task-trigger { position: fixed; right: 0; top: 0; height: 100%; width: 12px; z-index: 40; cursor: pointer; display: flex; align-items: center; justify-content: flex-end; }
+        #task-trigger:hover #trigger-arrow { opacity: 1; transform: translateX(0); }
+        #trigger-arrow { opacity: 0; transform: translateX(10px); transition: 0.3s; color: var(--accent); font-size: 24px; padding-right: 5px; }
+
+        #task-sidebar { position: fixed; right: -380px; top: 0; width: 350px; height: 100%; transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1); z-index: 45; box-shadow: -10px 0 30px rgba(0,0,0,0.5); }
+        #task-sidebar.open { right: 0; }
+
+        .day-column { background: rgba(15, 23, 42, 0.4); border-radius: 20px; padding: 15px; min-height: 500px; border: 1px solid rgba(255,255,255,0.05); min-width: 180px; }
+        .entry-card { margin-bottom: 8px; border-left: 4px solid; padding: 10px; border-radius: 12px; background: rgba(255,255,255,0.05); cursor: pointer; transition: 0.2s; }
+        .entry-card:hover { transform: translateY(-3px); background: rgba(255,255,255,0.1); }
+
+        /* Flappy Game */
+        #flappy-container { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        canvas { border: 4px solid #334155; border-radius: 20px; box-shadow: 0 0 50px rgba(16, 185, 129, 0.2); background: #000; }
+
+        .modal-backdrop { background: rgba(0,0,0,0.8); backdrop-filter: blur(6px); position: fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:110; }
+        .btn-primary { background: #10b981; color: white; font-weight: bold; border-radius: 12px; transition: 0.2s; }
+        .btn-primary:hover { background: #059669; transform: scale(1.02); }
+        
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+    </style>
+</head>
+<body class="h-full theme-base">
+
+<div id="auth-page" class="modal-backdrop">
+    <div class="glass p-10 rounded-[32px] w-[380px] text-center shadow-2xl border-emerald-500/30">
+        <h1 id="auth-title" class="text-4xl font-black text-emerald-400 mb-2 tracking-tighter">NEXUS OS</h1>
+        <p id="auth-subtitle" class="text-slate-400 text-sm mb-8">Personal Management Terminal</p>
+        
+        <div class="space-y-4">
+            <input type="text" id="auth-name" placeholder="User Name" class="w-full bg-slate-900/50 p-4 rounded-2xl border border-slate-700 focus:border-emerald-500 outline-none transition-all uppercase text-center font-bold">
+            <input type="password" id="auth-pin" maxlength="4" placeholder="4-Digit PIN" class="w-full bg-slate-900/50 p-4 rounded-2xl border border-slate-700 text-center tracking-[1em] focus:border-emerald-500 outline-none font-bold">
+            <button onclick="handleAuth()" id="auth-btn" class="w-full btn-primary p-4 text-lg">Sign In</button>
+            
+            <p class="text-sm text-slate-400 mt-4">
+                <span id="auth-toggle-msg">Already have an account?</span> 
+                <button onclick="toggleAuthMode()" id="auth-toggle-btn" class="text-emerald-400 hover:underline ml-1">Sign In</button>
+            </p>
+        </div>
+    </div>
+</div>
+
+<div id="main-app" class="hidden h-full flex flex-col p-8">
+    <header class="flex justify-between items-end mb-8">
+        <div>
+            <p class="text-emerald-400 font-bold tracking-widest text-xs uppercase mb-1">Authenticated Session</p>
+            <h1 id="display-user" class="text-5xl font-black uppercase tracking-tight">USER</h1>
+        </div>
+        <div class="flex gap-3">
+            <select onchange="setTheme(this.value)" class="bg-slate-800 border border-slate-700 p-3 rounded-xl text-xs font-bold outline-none">
+                <option value="base">System Default</option>
+                <option value="science">Science Lab</option>
+                <option value="car">Gran Turismo</option>
+                <option value="aviation">Aviation Flight</option>
+            </select>
+            <button onclick="logout()" class="bg-red-500/10 text-red-400 border border-red-500/50 px-5 py-3 rounded-xl font-bold hover:bg-red-500 hover:text-white transition">LOGOUT</button>
+        </div>
+    </header>
+
+    <div id="timetable-grid" class="flex gap-4 overflow-x-auto pb-6 flex-1">
+        </div>
+
+    <div class="mt-4 flex gap-4">
+        <button onclick="openPinPad()" class="bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black shadow-lg shadow-emerald-900/20 hover:scale-105 transition">SECURE TERMINAL</button>
+        <button onclick="askConfirm('Wipe all local entries?', () => clearAllEvents())" class="bg-slate-800 border border-slate-700 px-8 py-4 rounded-2xl font-bold">CLEAR CACHE</button>
+    </div>
+</div>
+
+<div id="task-trigger" onmouseenter="toggleTasks(true)">
+    <div id="trigger-arrow">◀</div>
+</div>
+<aside id="task-sidebar" class="glass p-8 flex flex-col" onmouseleave="toggleTasks(false)">
+    <h3 class="text-2xl font-bold mb-6 flex items-center gap-2">
+        <span class="text-emerald-400 italic">Nexus</span> Task Hub
+    </h3>
+    
+    <div class="space-y-3 mb-8">
+        <input type="text" id="task-input" placeholder="New task..." class="w-full bg-slate-900/50 p-3 rounded-xl border border-slate-700 outline-none">
+        <select id="task-day-select" class="w-full bg-slate-900/50 p-3 rounded-xl border border-slate-700 outline-none text-sm">
+            <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+            <option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option>
+        </select>
+        <button onclick="addTask()" class="w-full btn-primary py-3">Add Task</button>
+    </div>
+
+    <div id="task-list" class="flex-1 overflow-y-auto space-y-3">
+        </div>
+</aside>
+
+<div id="event-modal" class="modal-backdrop hidden">
+    <div class="glass p-8 rounded-3xl w-[400px]">
+        <h2 id="modal-title" class="text-2xl font-bold mb-6">Modify Entry</h2>
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] text-slate-400 uppercase font-bold">Start Time</label>
+                    <input type="time" id="ev-start" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] text-slate-400 uppercase font-bold">End Time</label>
+                    <input type="time" id="ev-end" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700">
+                </div>
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] text-slate-400 uppercase font-bold">Activity Name</label>
+                <input type="text" id="ev-subject" placeholder="e.g. Mathematics" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700">
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] text-slate-400 uppercase font-bold">Location</label>
+                <input type="text" id="ev-room" placeholder="e.g. Lab 4" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700">
+            </div>
+            
+            <div class="flex gap-2 pt-4">
+                <button onclick="saveEvent()" class="flex-1 btn-primary py-4">Save Entry</button>
+                <button id="single-delete-btn" onclick="deleteCurrentEvent()" class="bg-red-500/10 text-red-500 border border-red-500/50 px-4 rounded-xl font-bold hidden">Delete</button>
+            </div>
+            <button onclick="closeModals()" class="w-full text-slate-500 text-xs py-2 hover:text-white">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="notif-popup" class="modal-backdrop hidden !z-[200]">
+    <div class="glass p-8 rounded-[40px] w-96 text-center border-2 border-emerald-500 shadow-[0_0_50px_rgba(16,185,129,0.2)]">
+        <div class="text-5xl mb-4">🔔</div>
+        <h2 class="text-2xl font-black mb-2">TIME IS DUE</h2>
+        <p id="notif-text" class="text-slate-300 mb-8">Your scheduled task is starting now.</p>
+        <div class="flex gap-3">
+            <button onclick="ackNotif()" class="flex-1 btn-primary py-4">ACKNOWLEDGE</button>
+            <button onclick="snoozeNotif()" class="flex-1 bg-slate-800 py-4 rounded-2xl font-bold">SNOOZE</button>
+        </div>
+    </div>
+</div>
+
+<div id="pin-modal" class="modal-backdrop hidden">
+    <div class="glass p-8 rounded-[40px] text-center">
+        <h3 class="text-emerald-400 font-bold mb-4 tracking-widest">ENTER ACCESS CODE</h3>
+        <div id="pin-display" class="text-4xl mb-6 tracking-[0.5em] font-black text-white">____</div>
+        <div class="grid grid-cols-3 gap-3 max-w-[200px] mx-auto">
+            <button onclick="typePin('1')" class="bg-slate-800 p-4 rounded-xl font-bold hover:bg-emerald-500">1</button>
+            <button onclick="typePin('2')" class="bg-slate-800 p-4 rounded-xl font-bold hover:bg-emerald-500">2</button>
+            <button onclick="typePin('3')" class="bg-slate-800 p-4 rounded-xl font-bold hover:bg-emerald-500">3</button>
+            <button onclick="typePin('4')" class="bg-slate-800 p-4 rounded-xl font-bold hover:bg-emerald-500">4</button>
+            <button onclick="typePin('5')" class="bg-slate-800 p-4 rounded-xl font-bold hover:bg-emerald-500">5</button>
+            <button onclick="typePin('6')" class="bg-slate-800 p-4 rounded-xl font-bold hover:bg-emerald-500">6</button>
+            <button onclick="typePin('7')" class="bg-slate-800 p-4 rounded-xl font-bold hover:bg-emerald-500">7</button>
+            <button onclick="typePin('8')" class="bg-slate-800 p-4 rounded-xl font-bold hover:bg-emerald-500">8</button>
+            <button onclick="typePin('9')" class="bg-slate-800 p-4 rounded-xl font-bold hover:bg-emerald-500">9</button>
+            <button onclick="clearPin()" class="bg-red-500/20 text-red-500 p-4 rounded-xl font-bold col-span-2">CLEAR</button>
+            <button onclick="closeModals()" class="bg-slate-700 p-4 rounded-xl font-bold">✕</button>
+        </div>
+    </div>
+</div>
+
+<div id="confirm-modal" class="modal-backdrop hidden">
+    <div class="glass p-8 rounded-3xl w-80 text-center">
+        <h2 id="confirm-title" class="text-xl font-bold mb-6 italic">Are you sure?</h2>
+        <div class="flex gap-2">
+            <button id="confirm-yes" class="flex-1 bg-red-500 py-3 rounded-xl font-bold">Confirm</button>
+            <button onclick="closeModals()" class="flex-1 bg-slate-700 py-3 rounded-xl font-bold">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="game-over-modal" class="modal-backdrop hidden">
+    <div class="glass p-12 rounded-[50px] text-center border-4 border-emerald-500 animate-pulse">
+        <h1 class="text-6xl font-black mb-2">TERMINATED</h1>
+        <p class="text-3xl text-emerald-400 mb-8 font-bold">Score: <span id="final-score">0</span></p>
+        <div class="flex gap-4">
+            <button onclick="startFlappy()" class="bg-emerald-500 px-10 py-5 rounded-3xl font-black text-xl hover:scale-110 transition">REBOOT</button>
+            <button onclick="closeFlappy()" class="bg-slate-800 px-10 py-5 rounded-3xl font-bold text-xl">EXIT</button>
+        </div>
+    </div>
+</div>
+
+<div id="flappy-container">
+    <div class="mb-4 flex items-center gap-10">
+        <h2 class="text-2xl font-black italic">NEXUS_WING</h2>
+        <div class="text-emerald-400 font-bold">SCORE: <span id="live-score">0</span></div>
+    </div>
+    <canvas id="flappy-canvas" width="400" height="600"></canvas>
+    <p class="mt-6 text-slate-500 text-sm">Tap [SPACE] to Pilot | Escape Boundaries to Fail</p>
+</div>
+
+<script>
+// --- CORE SYSTEM DATA ---
+let users = JSON.parse(localStorage.getItem('nexus_db') || '{}');
+let currentUser = null;
+let isSignUp = false;
+let currentEditId = null;
+let currentDay = null;
+let currentPin = '';
+
+const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+// --- AUTH LOGIC ---
+window.onload = () => {
+    const lastUser = localStorage.getItem('last_user');
+    if (lastUser && users[lastUser]) {
+        document.getElementById('auth-name').value = lastUser;
+    }
+};
+
+function toggleAuthMode() {
+    isSignUp = !isSignUp;
+    document.getElementById('auth-title').textContent = isSignUp ? "REGISTRY" : "NEXUS OS";
+    document.getElementById('auth-btn').textContent = isSignUp ? "Create Account" : "Sign In";
+    document.getElementById('auth-toggle-msg').textContent = isSignUp ? "Already have an account?" : "Don't have an account?";
+    document.getElementById('auth-toggle-btn').textContent = isSignUp ? "Sign In" : "Sign Up";
+}
+
+function handleAuth() {
+    const name = document.getElementById('auth-name').value.trim().toLowerCase();
+    const pin = document.getElementById('auth-pin').value;
+
+    if (!name || pin.length !== 4) return alert("System Error: Check Name/PIN");
+
+    if (isSignUp) {
+        if (users[name]) return alert("Name taken.");
+        users[name] = { pin, theme: 'base', events: [], tasks: [] };
+        login(name);
+    } else {
+        if (users[name] && users[name].pin === pin) {
+            login(name);
+        } else {
+            alert("Incorrect Credentials.");
+        }
+    }
+}
+
+function login(name) {
+    currentUser = name;
+    localStorage.setItem('last_user', name);
+    document.getElementById('auth-page').classList.add('hidden');
+    document.getElementById('main-app').classList.remove('hidden');
+    document.getElementById('display-user').textContent = name;
+    setTheme(users[currentUser].theme);
+    renderAll();
+    startNotifEngine();
+}
+
+function logout() {
+    currentUser = null;
+    location.reload();
+}
+
+function save() {
+    localStorage.setItem('nexus_db', JSON.stringify(users));
+}
+
+function setTheme(t) {
+    document.body.className = `h-full theme-${t}`;
+    if (currentUser) {
+        users[currentUser].theme = t;
+        save();
+    }
+}
+
+// --- TIMETABLE LOGIC ---
+function renderTimetable() {
+    const grid = document.getElementById('timetable-grid');
+    grid.innerHTML = '';
+    
+    DAYS.forEach(day => {
+        const col = document.createElement('div');
+        col.className = 'day-column';
+        col.innerHTML = `<h3 class="text-center font-black text-emerald-400 mb-5 tracking-widest text-xs uppercase">${day}</h3>`;
+        
+        const dayEvents = users[currentUser].events.filter(e => e.day === day)
+            .sort((a,b) => a.start.localeCompare(b.start));
+
+        dayEvents.forEach(e => {
+            const card = document.createElement('div');
+            card.className = 'entry-card';
+            card.style.borderColor = '#10b981';
+            card.innerHTML = `
+                <div class="text-[10px] text-slate-400 font-bold mb-1">${e.start} - ${e.end}</div>
+                <div class="font-bold text-sm leading-tight">${e.subject}</div>
+                ${e.room ? `<div class="text-[10px] mt-2 opacity-50">📍 ${e.room}</div>` : ''}
+            `;
+            card.onclick = () => openEventModal(day, e);
+            col.appendChild(card);
+        });
+
+        const addBtn = document.createElement('button');
+        addBtn.className = "w-full mt-4 py-2 border border-dashed border-slate-700 rounded-xl text-slate-500 hover:text-emerald-400 hover:border-emerald-400 transition text-[10px] font-bold";
+        addBtn.textContent = "+ ADD ENTRY";
+        addBtn.onclick = () => openEventModal(day);
+        col.appendChild(addBtn);
+
+        grid.appendChild(col);
+    });
+}
+
+function openEventModal(day, ev = null) {
+    currentDay = day;
+    currentEditId = ev ? ev.id : null;
+    document.getElementById('event-modal').classList.remove('hidden');
+    document.getElementById('modal-title').textContent = ev ? 'Edit Entry' : 'New Entry';
+    document.getElementById('single-delete-btn').classList.toggle('hidden', !ev);
+
+    document.getElementById('ev-start').value = ev ? ev.start : '';
+    document.getElementById('ev-end').value = ev ? ev.end : '';
+    document.getElementById('ev-subject').value = ev ? ev.subject : '';
+    document.getElementById('ev-room').value = ev ? ev.room : '';
+}
+
+function saveEvent() {
+    const s = document.getElementById('ev-start').value;
+    const e = document.getElementById('ev-end').value;
+    const sub = document.getElementById('ev-subject').value;
+    const rm = document.getElementById('ev-room').value;
+
+    if (!s || !e || !sub) return alert("Fill required fields");
+
+    const newEv = { id: currentEditId || Date.now(), day: currentDay, start: s, end: e, subject: sub, room: rm };
+
+    if (currentEditId) {
+        users[currentUser].events = users[currentUser].events.map(ev => ev.id === currentEditId ? newEv : ev);
+    } else {
+        users[currentUser].events.push(newEv);
+    }
+    
+    save(); closeModals(); renderTimetable();
+}
+
+function deleteCurrentEvent() {
+    askConfirm("Delete this event?", () => {
+        users[currentUser].events = users[currentUser].events.filter(ev => ev.id !== currentEditId);
+        save(); closeModals(); renderTimetable();
+    });
+}
+
+function clearAllEvents() {
+    users[currentUser].events = [];
+    users[currentUser].tasks = [];
+    save(); renderAll();
+}
+
+// --- TASK LOGIC ---
+function toggleTasks(show) {
+    document.getElementById('task-sidebar').classList.toggle('open', show);
+}
+
+function addTask() {
+    const text = document.getElementById('task-input').value;
+    const day = document.getElementById('task-day-select').value;
+    if (!text) return;
+
+    users[currentUser].tasks.push({ id: Date.now(), text, day });
+    document.getElementById('task-input').value = '';
+    save(); renderTasks();
+}
+
+function renderTasks() {
+    const list = document.getElementById('task-list');
+    list.innerHTML = '';
+    
+    // Sort tasks by Day Order
+    const sorted = [...users[currentUser].tasks].sort((a,b) => 
+        DAYS.indexOf(a.day) - DAYS.indexOf(b.day)
+    );
+
+    sorted.forEach(t => {
+        const div = document.createElement('div');
+        div.className = "bg-white/5 p-4 rounded-2xl border border-white/10 group flex justify-between items-center";
+        div.innerHTML = `
+            <div>
+                <p class="text-[9px] font-black text-emerald-500 uppercase">${t.day}</p>
+                <p class="text-sm font-medium">${t.text}</p>
+            </div>
+            <button onclick="removeTask(${t.id})" class="text-red-500 opacity-0 group-hover:opacity-100 transition">✕</button>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function removeTask(id) {
+    users[currentUser].tasks = users[currentUser].tasks.filter(t => t.id !== id);
+    save(); renderTasks();
+}
+
+// --- NOTIFICATION SYSTEM ---
+function startNotifEngine() {
+    setInterval(() => {
+        const now = new Date();
+        const timeStr = now.toTimeString().slice(0, 5);
+        const dayName = DAYS[(now.getDay() + 6) % 7]; // Monday = 0
+        
+        // Check events
+        const dueEvent = users[currentUser].events.find(e => e.day === dayName && e.start === timeStr);
+        if (dueEvent) triggerNotif(`Event Starting: ${dueEvent.subject}`);
+
+        // Daily check for tasks
+        const dueTask = users[currentUser].tasks.find(t => t.day === dayName);
+        if (dueTask && now.getSeconds() === 0 && now.getMinutes() % 30 === 0) {
+            triggerNotif(`Daily Task: ${dueTask.text}`);
+        }
+    }, 1000);
+}
+
+function triggerNotif(msg) {
+    document.getElementById('notif-text').textContent = msg;
+    document.getElementById('notif-popup').classList.remove('hidden');
+}
+function ackNotif() { document.getElementById('notif-popup').classList.add('hidden'); }
+function snoozeNotif() {
+    ackNotif();
+    setTimeout(() => document.getElementById('notif-popup').classList.remove('hidden'), 60000);
+}
+
+// --- FLAPPY BIRD REDESIGN ---
+const cvs = document.getElementById('flappy-canvas');
+const ctx = cvs.getContext('2d');
+let bird, pipes, score, loop, gameActive = false;
+
+function typePin(n) {
+    if (currentPin.length < 4) currentPin += n;
+    document.getElementById('pin-display').textContent = currentPin.padEnd(4, '_');
+    if (currentPin === '2345') {
+        setTimeout(() => { closeModals(); startFlappy(); }, 200);
+    }
+}
+function clearPin() { currentPin = ''; document.getElementById('pin-display').textContent = '____'; }
+function openPinPad() { currentPin = ''; clearPin(); document.getElementById('pin-modal').classList.remove('hidden'); }
+
+function startFlappy() {
+    document.getElementById('flappy-container').style.display = 'flex';
+    document.getElementById('game-over-modal').classList.add('hidden');
+    bird = { x: 50, y: 300, v: 0, w: 35, h: 25 };
+    pipes = [];
+    score = 0;
+    gameActive = true;
+    spawnPipe();
+    if(loop) clearInterval(loop);
+    loop = setInterval(drawFlappy, 20);
+    window.addEventListener('keydown', handleKey);
+}
+
+function handleKey(e) { if(e.code === 'Space') bird.v = -7.5; }
+
+function spawnPipe() {
+    const gap = 170; // Slightly larger opening for easier play
+    const minHeight = 50;
+    const y = Math.random() * (cvs.height - gap - minHeight * 2) + minHeight;
+    pipes.push({ x: cvs.width, y, gap });
+}
+
+function drawFlappy() {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0,0,cvs.width,cvs.height);
+
+    bird.v += 0.45;
+    bird.y += bird.v;
+
+    // Bird
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.roundRect(bird.x, bird.y, bird.w, bird.h, 5);
+    ctx.fill();
+
+    // Pipes
+    pipes.forEach((p, i) => {
+        p.x -= 3;
+        ctx.fillStyle = '#10b981';
+        ctx.fillRect(p.x, 0, 50, p.y);
+        ctx.fillRect(p.x, p.y + p.gap, 50, cvs.height);
+
+        // Score
+        if(p.x === 50) { score++; document.getElementById('live-score').textContent = score; }
+
+        // Collision
+        if(bird.x + bird.w > p.x && bird.x < p.x + 50 && (bird.y < p.y || bird.y + bird.h > p.y + p.gap)) gameOver();
+    });
+
+    if(pipes.length > 0 && pipes[0].x < -50) pipes.shift();
+    if(pipes.length < 3 && pipes[pipes.length-1].x < 200) spawnPipe();
+
+    // Restricted boundaries
+    if(bird.y + bird.h > cvs.height || bird.y < 0) gameOver();
+}
+
+function gameOver() {
+    gameActive = false;
+    clearInterval(loop);
+    window.removeEventListener('keydown', handleKey);
+    document.getElementById('final-score').textContent = score;
+    document.getElementById('game-over-modal').classList.remove('hidden');
+}
+
+function closeFlappy() {
+    document.getElementById('flappy-container').style.display = 'none';
+    document.getElementById('game-over-modal').classList.add('hidden');
+    clearInterval(loop);
+}
+
+// --- UTILS ---
+function renderAll() {
+    renderTimetable();
+    renderTasks();
+}
+
+function closeModals() {
+    document.querySelectorAll('.modal-backdrop').forEach(m => {
+        if(m.id !== 'auth-page') m.classList.add('hidden');
+    });
+}
+
+function askConfirm(text, callback) {
+    const m = document.getElementById('confirm-modal');
+    m.classList.remove('hidden');
+    document.getElementById('confirm-title').textContent = text;
+    document.getElementById('confirm-yes').onclick = () => {
+        callback();
+        closeModals();
+    };
+}
+</script>
+</body>
+</html>
